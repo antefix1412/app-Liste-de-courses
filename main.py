@@ -16,6 +16,8 @@ from kivy.uix.screenmanager import Screen
 from kivy.graphics import Color, Rectangle
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+# MODIFICATION: Import pour les popups
+from kivy.uix.popup import Popup
 
 
 class BaseScreen(Screen):
@@ -263,6 +265,7 @@ class AddRecipeScreen(BaseScreen):
         # Add the row to the ingredients layout
         self.ingredients_layout.add_widget(row_layout)
 
+    # MODIFICATION: Correction de la méthode save_recipe pour résoudre le problème d'enregistrement des ingrédients
     def save_recipe(self, instance):
         recipe_name = self.name_input.text.strip()
         if not recipe_name:
@@ -273,19 +276,26 @@ class AddRecipeScreen(BaseScreen):
             servings = "4"  # Default to 4 if not a valid number
         
         ingredients = []
-        # Process ingredients in groups of 3 (name, quantity, unit)
-        for i in range(0, len(self.ingredients_layout.children), 3):
-            if i+2 < len(self.ingredients_layout.children):
-                name = self.ingredients_layout.children[i+2].text.strip()
-                quantity = self.ingredients_layout.children[i+1].text.strip()
-                unit = self.ingredients_layout.children[i].text.strip()
-                
-                if name:
-                    ingredients.append({
-                        'name': name,
-                        'quantity': quantity,
-                        'unit': unit
-                    })
+        # Parcourir chaque ligne d'ingrédient (chaque BoxLayout enfant)
+        for row_layout in self.ingredients_layout.children:
+            if isinstance(row_layout, BoxLayout):
+                # Dans chaque BoxLayout, nous avons name_input, quantity_input, unit_input
+                # L'ordre des enfants est inversé dans Kivy (le dernier ajouté est le premier)
+                if len(row_layout.children) == 3:
+                    unit_input = row_layout.children[0]
+                    quantity_input = row_layout.children[1]
+                    name_input = row_layout.children[2]
+                    
+                    name = name_input.text.strip()
+                    quantity = quantity_input.text.strip()
+                    unit = unit_input.text.strip()
+                    
+                    if name:
+                        ingredients.append({
+                            'name': name,
+                            'quantity': quantity,
+                            'unit': unit
+                        })
         
         instructions = self.instructions_input.text.strip()
         
@@ -574,7 +584,7 @@ class EditRecipeScreen(BaseScreen):
 
         self.ingredients_layout.add_widget(row_layout)
 
-    
+    # MODIFICATION: Correction de la méthode save_recipe pour résoudre le problème d'enregistrement des ingrédients
     def save_recipe(self, instance):
         new_recipe_name = self.name_input.text.strip()
         if not new_recipe_name:
@@ -585,19 +595,26 @@ class EditRecipeScreen(BaseScreen):
             servings = "4"  # Default to 4 if not a valid number
         
         ingredients = []
-        # Process ingredients in groups of 3 (name, quantity, unit)
-        for i in range(0, len(self.ingredients_layout.children), 3):
-            if i+2 < len(self.ingredients_layout.children):
-                name = self.ingredients_layout.children[i+2].text.strip()
-                quantity = self.ingredients_layout.children[i+1].text.strip()
-                unit = self.ingredients_layout.children[i].text.strip()
-                
-                if name:
-                    ingredients.append({
-                        'name': name,
-                        'quantity': quantity,
-                        'unit': unit
-                    })
+        # Parcourir chaque ligne d'ingrédient (chaque BoxLayout enfant)
+        for row_layout in self.ingredients_layout.children:
+            if isinstance(row_layout, BoxLayout):
+                # Dans chaque BoxLayout, nous avons name_input, quantity_input, unit_input
+                # L'ordre des enfants est inversé dans Kivy (le dernier ajouté est le premier)
+                if len(row_layout.children) == 3:
+                    unit_input = row_layout.children[0]
+                    quantity_input = row_layout.children[1]
+                    name_input = row_layout.children[2]
+                    
+                    name = name_input.text.strip()
+                    quantity = quantity_input.text.strip()
+                    unit = unit_input.text.strip()
+                    
+                    if name:
+                        ingredients.append({
+                            'name': name,
+                            'quantity': quantity,
+                            'unit': unit
+                        })
         
         instructions = self.instructions_input.text.strip()
         
@@ -625,7 +642,7 @@ class EditRecipeScreen(BaseScreen):
     def go_back(self, instance):
         self.manager.current = 'view_recipe'
     
-
+    # MODIFICATION: Correction de la méthode export_to_pdf pour ajouter une notification
     def export_to_pdf(self, instance):
         if not self.recipe_name:
             return
@@ -669,6 +686,15 @@ class EditRecipeScreen(BaseScreen):
             y_position -= 20  # Espacement entre les lignes
 
         c.save()  # Sauvegarde le PDF
+        
+        # MODIFICATION: Ajouter une notification pour indiquer où le PDF a été sauvegardé
+        popup = Popup(
+            title='PDF Créé',
+            content=Label(text=f'Le PDF a été sauvegardé dans:\n{pdf_path}'),
+            size_hint=(0.8, 0.4)
+        )
+        popup.open()
+
 
 class MenuScreen(BaseScreen):
     def __init__(self, **kwargs):
@@ -726,12 +752,22 @@ class MenuScreen(BaseScreen):
                              background_color=AppColors.PRIMARY)
         generate_btn.bind(on_press=self.generate_shopping_list)
         
+        # MODIFICATION: Ajout du bouton de réinitialisation du menu
+        reset_btn = Button(text='Réinitialiser le menu', size_hint_y=None, height=50,
+                          background_color=AppColors.SECONDARY)
+        reset_btn.bind(on_press=self.reset_menu)
+        
         scroll = ScrollView()
         scroll.add_widget(self.days_layout)
         
         self.layout.add_widget(header)
         self.layout.add_widget(scroll)
-        self.layout.add_widget(generate_btn)
+        
+        # MODIFICATION: Regrouper les boutons dans un layout horizontal
+        buttons_layout = BoxLayout(size_hint_y=None, height=50, spacing=10)
+        buttons_layout.add_widget(generate_btn)
+        buttons_layout.add_widget(reset_btn)
+        self.layout.add_widget(buttons_layout)
         
         self.add_widget(self.layout)
     
@@ -757,18 +793,34 @@ class MenuScreen(BaseScreen):
             if menu_store.exists(day):
                 day_data = menu_store.get(day)
                 
-                if 'breakfast' in day_data and day_data['breakfast']:
-                    breakfast_btn.text = ', '.join(day_data['breakfast'])
+                if 'breakfast' in day_data:
+                    if isinstance(day_data['breakfast'], dict):
+                        meals = day_data['breakfast'].get('meals', [])
+                        servings = day_data['breakfast'].get('servings', '4')
+                        breakfast_btn.text = f"{', '.join(meals)} (pour {servings} pers.)"
+                    elif isinstance(day_data['breakfast'], list):
+                        # Compatibilité avec l'ancien format
+                        breakfast_btn.text = ', '.join(day_data['breakfast'])
                 else:
                     breakfast_btn.text = 'Choisir un repas'
                 
-                if 'lunch' in day_data and day_data['lunch']:
-                    lunch_btn.text = ', '.join(day_data['lunch'])
+                if 'lunch' in day_data:
+                    if isinstance(day_data['lunch'], dict):
+                        meals = day_data['lunch'].get('meals', [])
+                        servings = day_data['lunch'].get('servings', '4')
+                        lunch_btn.text = f"{', '.join(meals)} (pour {servings} pers.)"
+                    elif isinstance(day_data['lunch'], list):
+                        lunch_btn.text = ', '.join(day_data['lunch'])
                 else:
                     lunch_btn.text = 'Choisir un repas'
                 
-                if 'dinner' in day_data and day_data['dinner']:
-                    dinner_btn.text = ', '.join(day_data['dinner'])
+                if 'dinner' in day_data:
+                    if isinstance(day_data['dinner'], dict):
+                        meals = day_data['dinner'].get('meals', [])
+                        servings = day_data['dinner'].get('servings', '4')
+                        dinner_btn.text = f"{', '.join(meals)} (pour {servings} pers.)"
+                    elif isinstance(day_data['dinner'], list):
+                        dinner_btn.text = ', '.join(day_data['dinner'])
                 else:
                     dinner_btn.text = 'Choisir un repas'
             else:
@@ -776,10 +828,50 @@ class MenuScreen(BaseScreen):
                 lunch_btn.text = 'Choisir un repas'
                 dinner_btn.text = 'Choisir un repas'
     
-    def choose_meal(self, day, meal_time):
-        self.manager.get_screen('choose_meal').day = day
-        self.manager.get_screen('choose_meal').meal_time = meal_time
-        self.manager.current = 'choose_meal'
+    # MODIFICATION: Ajout des méthodes pour gérer la réinitialisation du menu
+    def reset_menu(self, instance):
+        # Créer une popup de confirmation
+        content = BoxLayout(orientation='vertical', padding=10, spacing=10)
+        content.add_widget(Label(text='Êtes-vous sûr de vouloir réinitialiser le menu?\nCette action ne peut pas être annulée.'))
+        
+        # Créer les boutons
+        buttons = BoxLayout(size_hint_y=None, height=40, spacing=10)
+        
+        # Créer la popup d'abord pour pouvoir y faire référence
+        popup = Popup(title='Confirmation', content=content, size_hint=(0.8, 0.4), auto_dismiss=True)
+        
+        # Bouton Annuler
+        cancel_btn = Button(text='Annuler')
+        cancel_btn.bind(on_press=popup.dismiss)
+        
+        # Bouton Confirmer - utiliser une fonction lambda pour passer popup comme argument
+        confirm_btn = Button(text='Confirmer')
+        confirm_btn.bind(on_press=lambda btn: self.confirm_reset_menu(popup))
+        
+        buttons.add_widget(cancel_btn)
+        buttons.add_widget(confirm_btn)
+        content.add_widget(buttons)
+        
+        popup.open()
+
+    def confirm_reset_menu(self, popup):
+        # Fermer la popup
+        popup.dismiss()
+        
+        # Réinitialiser le menu en supprimant tous les jours
+        for day in list(menu_store.keys()):  # Créer une liste pour éviter les problèmes de modification pendant l'itération
+            menu_store.delete(day)
+        
+        # Recharger l'affichage du menu
+        self.load_menu()
+        
+        # Afficher une confirmation
+        confirm_popup = Popup(
+            title='Menu réinitialisé',
+            content=Label(text='Le menu a été réinitialisé avec succès.'),
+            size_hint=(0.8, 0.3)
+        )
+        confirm_popup.open()
     
     def generate_shopping_list(self, instance):
         shopping_list = {}
@@ -790,29 +882,54 @@ class MenuScreen(BaseScreen):
                 day_data = menu_store.get(day)
                 
                 for meal_time in ['breakfast', 'lunch', 'dinner']:
-                    if meal_time in day_data and isinstance(day_data[meal_time], list):
-                        meals = day_data[meal_time]
+                    if meal_time in day_data:
+                        meals = []
+                        servings_ratio = 1.0
+                        
+                        if isinstance(day_data[meal_time], dict):
+                            meals = day_data[meal_time].get('meals', [])
+                            try:
+                                menu_servings = int(day_data[meal_time].get('servings', '4'))
+                                # Le ratio sera utilisé pour ajuster les quantités
+                            except ValueError:
+                                menu_servings = 4
+                        elif isinstance(day_data[meal_time], list):
+                            meals = day_data[meal_time]
+                            menu_servings = 4  # Valeur par défaut pour l'ancien format
+                        
                         for meal in meals:
                             if recipes_store.exists(meal):
                                 recipe = recipes_store.get(meal)
                                 
+                                # Calculer le ratio en fonction du nombre de personnes
+                                try:
+                                    recipe_servings = int(recipe.get('servings', '4'))
+                                    servings_ratio = menu_servings / recipe_servings
+                                except (ValueError, ZeroDivisionError):
+                                    servings_ratio = 1.0
+                                
                                 for ingredient in recipe.get('ingredients', []):
                                     name = ingredient['name']
-                                    quantity = ingredient['quantity']
                                     unit = ingredient['unit']
+                                    
+                                    # Ajuster la quantité en fonction du nombre de personnes
+                                    try:
+                                        quantity = float(ingredient['quantity']) * servings_ratio
+                                    except (ValueError, TypeError):
+                                        quantity = ingredient['quantity']
                                     
                                     if name in shopping_list:
                                         # Try to add quantities if they're numbers
                                         try:
                                             current_quantity = float(shopping_list[name]['quantity'])
-                                            additional_quantity = float(quantity)
-                                            shopping_list[name]['quantity'] = str(current_quantity + additional_quantity)
+                                            if isinstance(quantity, float):
+                                                shopping_list[name]['quantity'] = str(current_quantity + quantity)
                                         except (ValueError, TypeError):
                                             # If conversion fails, just keep the original
                                             pass
                                     else:
                                         shopping_list[name] = {
-                                            'quantity': quantity,
+                                            'quantity': str(quantity) if isinstance(quantity, float) else quantity,
                                             'unit': unit,
                                             'checked': False
                                         }
@@ -824,6 +941,11 @@ class MenuScreen(BaseScreen):
         
         # Go to shopping list screen
         self.manager.current = 'shopping'
+    
+    def choose_meal(self, day, meal_time):
+        self.manager.get_screen('choose_meal').day = day
+        self.manager.get_screen('choose_meal').meal_time = meal_time
+        self.manager.current = 'choose_meal'
     
     def go_back(self, instance):
         self.manager.current = 'home'
@@ -845,6 +967,14 @@ class ChooseMealScreen(BaseScreen):
         
         self.header.add_widget(back_btn)
         self.header.add_widget(self.title_label)
+
+        servings_layout = BoxLayout(size_hint_y=None, height=50)
+        servings_layout.add_widget(Label(text='Nombre de personnes:', size_hint_x=None, width=150, color=AppColors.TEXT))
+        self.servings_input = TextInput(text='4', multiline=False, size_hint_x=None, width=50)
+        servings_layout.add_widget(self.servings_input)
+        
+        # Ajouter ce champ avant le bouton d'enregistrement
+        self.layout.add_widget(servings_layout)
         
         # Search input
         search_layout = BoxLayout(size_hint_y=None, height=50)
@@ -926,8 +1056,12 @@ class ChooseMealScreen(BaseScreen):
         
         if menu_store.exists(self.day):
             day_data = menu_store.get(self.day)
-            if self.meal_time in day_data and isinstance(day_data[self.meal_time], list):
-                self.selected_meal_list = day_data[self.meal_time]
+            if self.meal_time in day_data:
+                if isinstance(day_data[self.meal_time], dict):
+                    self.selected_meal_list = day_data[self.meal_time].get('meals', [])
+                    self.servings_input.text = day_data[self.meal_time].get('servings', '4')
+                elif isinstance(day_data[self.meal_time], list):
+                    self.selected_meal_list = day_data[self.meal_time]
         
         for meal in self.selected_meal_list:
             self.add_meal_to_selected_list(meal)
@@ -988,7 +1122,18 @@ class ChooseMealScreen(BaseScreen):
         if menu_store.exists(self.day):
             day_data = menu_store.get(self.day)
         
-        day_data[self.meal_time] = self.selected_meal_list
+        # Récupérer le nombre de personnes
+        servings = self.servings_input.text.strip()
+        if not servings.isdigit():
+            servings = "4"  # Valeur par défaut
+        
+        # Stocker les repas avec le nombre de personnes
+        meal_data = {
+            'meals': self.selected_meal_list,
+            'servings': servings
+        }
+        
+        day_data[self.meal_time] = meal_data
         menu_store.put(self.day, **day_data)
         
         self.go_back(None)
