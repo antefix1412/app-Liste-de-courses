@@ -16,7 +16,6 @@ from kivy.uix.screenmanager import Screen
 from kivy.graphics import Color, Rectangle
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
-# MODIFICATION: Import pour les popups
 from kivy.uix.popup import Popup
 
 
@@ -226,6 +225,26 @@ class AddRecipeScreen(BaseScreen):
         
         self.add_widget(self.layout)
 
+    def on_pre_enter(self):
+        # Réinitialiser tous les champs du formulaire
+        self.reset_form()
+
+    def reset_form(self):
+        # Vider le champ du nom de la recette
+        self.name_input.text = ''
+        
+        # Réinitialiser le nombre de personnes à 4
+        self.servings_input.text = '4'
+        
+        # Vider le champ des instructions
+        self.instructions_input.text = ''
+        
+        # Effacer tous les ingrédients existants
+        self.ingredients_layout.clear_widgets()
+        
+        # Ajouter une ligne d'ingrédient vide
+        self.add_ingredient_row()
+
         
     
     def add_ingredient_row(self, instance=None):
@@ -265,7 +284,6 @@ class AddRecipeScreen(BaseScreen):
         # Add the row to the ingredients layout
         self.ingredients_layout.add_widget(row_layout)
 
-    # MODIFICATION: Correction de la méthode save_recipe pour résoudre le problème d'enregistrement des ingrédients
     def save_recipe(self, instance):
         recipe_name = self.name_input.text.strip()
         if not recipe_name:
@@ -584,7 +602,6 @@ class EditRecipeScreen(BaseScreen):
 
         self.ingredients_layout.add_widget(row_layout)
 
-    # MODIFICATION: Correction de la méthode save_recipe pour résoudre le problème d'enregistrement des ingrédients
     def save_recipe(self, instance):
         new_recipe_name = self.name_input.text.strip()
         if not new_recipe_name:
@@ -629,12 +646,21 @@ class EditRecipeScreen(BaseScreen):
         for day in menu_store.keys():
             day_data = menu_store.get(day)
             for meal_time in ['breakfast', 'lunch', 'dinner']:
-                if meal_time in day_data and isinstance(day_data[meal_time], list):
-                    meals = day_data[meal_time]
-                    for i, meal in enumerate(meals):
-                        if meal == self.recipe_name:
-                            meals[i] = new_recipe_name
-                    day_data[meal_time] = meals
+                if meal_time in day_data:
+                    # Nouveau format avec liste de dictionnaires
+                    if isinstance(day_data[meal_time], dict) and 'meals' in day_data[meal_time] and isinstance(day_data[meal_time]['meals'], list):
+                        meals = day_data[meal_time]['meals']
+                        for meal in meals:
+                            if isinstance(meal, dict) and meal.get('name') == self.recipe_name:
+                                meal['name'] = new_recipe_name
+                        day_data[meal_time]['meals'] = meals
+                    # Ancien format
+                    elif meal_time in day_data and isinstance(day_data[meal_time], list):
+                        meals = day_data[meal_time]
+                        for i, meal in enumerate(meals):
+                            if meal == self.recipe_name:
+                                meals[i] = new_recipe_name
+                        day_data[meal_time] = meals
             menu_store.put(day, **day_data)
         
         self.go_back(None)
@@ -642,7 +668,6 @@ class EditRecipeScreen(BaseScreen):
     def go_back(self, instance):
         self.manager.current = 'view_recipe'
     
-    # MODIFICATION: Correction de la méthode export_to_pdf pour ajouter une notification
     def export_to_pdf(self, instance):
         if not self.recipe_name:
             return
@@ -687,7 +712,7 @@ class EditRecipeScreen(BaseScreen):
 
         c.save()  # Sauvegarde le PDF
         
-        # MODIFICATION: Ajouter une notification pour indiquer où le PDF a été sauvegardé
+        # Ajouter une notification pour indiquer où le PDF a été sauvegardé
         popup = Popup(
             title='PDF Créé',
             content=Label(text=f'Le PDF a été sauvegardé dans:\n{pdf_path}'),
@@ -752,7 +777,7 @@ class MenuScreen(BaseScreen):
                              background_color=AppColors.PRIMARY)
         generate_btn.bind(on_press=self.generate_shopping_list)
         
-        # MODIFICATION: Ajout du bouton de réinitialisation du menu
+        # Bouton de réinitialisation du menu
         reset_btn = Button(text='Réinitialiser le menu', size_hint_y=None, height=50,
                           background_color=AppColors.SECONDARY)
         reset_btn.bind(on_press=self.reset_menu)
@@ -763,7 +788,7 @@ class MenuScreen(BaseScreen):
         self.layout.add_widget(header)
         self.layout.add_widget(scroll)
         
-        # MODIFICATION: Regrouper les boutons dans un layout horizontal
+        # Regrouper les boutons dans un layout horizontal
         buttons_layout = BoxLayout(size_hint_y=None, height=50, spacing=10)
         buttons_layout.add_widget(generate_btn)
         buttons_layout.add_widget(reset_btn)
@@ -794,33 +819,70 @@ class MenuScreen(BaseScreen):
                 day_data = menu_store.get(day)
                 
                 if 'breakfast' in day_data:
-                    if isinstance(day_data['breakfast'], dict):
-                        meals = day_data['breakfast'].get('meals', [])
-                        servings = day_data['breakfast'].get('servings', '4')
-                        breakfast_btn.text = f"{', '.join(meals)} (pour {servings} pers.)"
+                    if isinstance(day_data['breakfast'], dict) and 'meals' in day_data['breakfast']:
+                        meals_text = ""
+                        # Nouveau format avec liste de dictionnaires
+                        if isinstance(day_data['breakfast']['meals'], list) and all(isinstance(m, dict) for m in day_data['breakfast']['meals']):
+                            for meal in day_data['breakfast']['meals']:
+                                meals_text += f"{meal['name']} ({meal['servings']} pers.), "
+                            if meals_text:
+                                meals_text = meals_text[:-2]  # Supprimer la dernière virgule et espace
+                        # Ancien format
+                        else:
+                            meals = day_data['breakfast'].get('meals', [])
+                            servings = day_data['breakfast'].get('servings', '4')
+                            meals_text = f"{', '.join(meals)} (pour {servings} pers.)"
+                        breakfast_btn.text = meals_text
                     elif isinstance(day_data['breakfast'], list):
                         # Compatibilité avec l'ancien format
                         breakfast_btn.text = ', '.join(day_data['breakfast'])
+                    else:
+                        breakfast_btn.text = 'Choisir un repas'
                 else:
                     breakfast_btn.text = 'Choisir un repas'
                 
+                # Même logique pour lunch et dinner
                 if 'lunch' in day_data:
-                    if isinstance(day_data['lunch'], dict):
-                        meals = day_data['lunch'].get('meals', [])
-                        servings = day_data['lunch'].get('servings', '4')
-                        lunch_btn.text = f"{', '.join(meals)} (pour {servings} pers.)"
+                    if isinstance(day_data['lunch'], dict) and 'meals' in day_data['lunch']:
+                        meals_text = ""
+                        # Nouveau format avec liste de dictionnaires
+                        if isinstance(day_data['lunch']['meals'], list) and all(isinstance(m, dict) for m in day_data['lunch']['meals']):
+                            for meal in day_data['lunch']['meals']:
+                                meals_text += f"{meal['name']} ({meal['servings']} pers.), "
+                            if meals_text:
+                                meals_text = meals_text[:-2]  # Supprimer la dernière virgule et espace
+                        # Ancien format
+                        else:
+                            meals = day_data['lunch'].get('meals', [])
+                            servings = day_data['lunch'].get('servings', '4')
+                            meals_text = f"{', '.join(meals)} (pour {servings} pers.)"
+                        lunch_btn.text = meals_text
                     elif isinstance(day_data['lunch'], list):
                         lunch_btn.text = ', '.join(day_data['lunch'])
+                    else:
+                        lunch_btn.text = 'Choisir un repas'
                 else:
                     lunch_btn.text = 'Choisir un repas'
                 
                 if 'dinner' in day_data:
-                    if isinstance(day_data['dinner'], dict):
-                        meals = day_data['dinner'].get('meals', [])
-                        servings = day_data['dinner'].get('servings', '4')
-                        dinner_btn.text = f"{', '.join(meals)} (pour {servings} pers.)"
+                    if isinstance(day_data['dinner'], dict) and 'meals' in day_data['dinner']:
+                        meals_text = ""
+                        # Nouveau format avec liste de dictionnaires
+                        if isinstance(day_data['dinner']['meals'], list) and all(isinstance(m, dict) for m in day_data['dinner']['meals']):
+                            for meal in day_data['dinner']['meals']:
+                                meals_text += f"{meal['name']} ({meal['servings']} pers.), "
+                            if meals_text:
+                                meals_text = meals_text[:-2]  # Supprimer la dernière virgule et espace
+                        # Ancien format
+                        else:
+                            meals = day_data['dinner'].get('meals', [])
+                            servings = day_data['dinner'].get('servings', '4')
+                            meals_text = f"{', '.join(meals)} (pour {servings} pers.)"
+                        dinner_btn.text = meals_text
                     elif isinstance(day_data['dinner'], list):
                         dinner_btn.text = ', '.join(day_data['dinner'])
+                    else:
+                        dinner_btn.text = 'Choisir un repas'
                 else:
                     dinner_btn.text = 'Choisir un repas'
             else:
@@ -828,7 +890,6 @@ class MenuScreen(BaseScreen):
                 lunch_btn.text = 'Choisir un repas'
                 dinner_btn.text = 'Choisir un repas'
     
-    # MODIFICATION: Ajout des méthodes pour gérer la réinitialisation du menu
     def reset_menu(self, instance):
         # Créer une popup de confirmation
         content = BoxLayout(orientation='vertical', padding=10, spacing=10)
@@ -883,56 +944,132 @@ class MenuScreen(BaseScreen):
                 
                 for meal_time in ['breakfast', 'lunch', 'dinner']:
                     if meal_time in day_data:
-                        meals = []
-                        servings_ratio = 1.0
-                        
-                        if isinstance(day_data[meal_time], dict):
-                            meals = day_data[meal_time].get('meals', [])
-                            try:
-                                menu_servings = int(day_data[meal_time].get('servings', '4'))
-                                # Le ratio sera utilisé pour ajuster les quantités
-                            except ValueError:
-                                menu_servings = 4
-                        elif isinstance(day_data[meal_time], list):
-                            meals = day_data[meal_time]
-                            menu_servings = 4  # Valeur par défaut pour l'ancien format
-                        
-                        for meal in meals:
-                            if recipes_store.exists(meal):
-                                recipe = recipes_store.get(meal)
-                                
-                                # Calculer le ratio en fonction du nombre de personnes
-                                try:
-                                    recipe_servings = int(recipe.get('servings', '4'))
-                                    servings_ratio = menu_servings / recipe_servings
-                                except (ValueError, ZeroDivisionError):
-                                    servings_ratio = 1.0
-                                
-                                for ingredient in recipe.get('ingredients', []):
-                                    name = ingredient['name']
-                                    unit = ingredient['unit']
-                                    
-                                    # Ajuster la quantité en fonction du nombre de personnes
+                        # Nouveau format avec liste de dictionnaires
+                        if isinstance(day_data[meal_time], dict) and 'meals' in day_data[meal_time] and isinstance(day_data[meal_time]['meals'], list):
+                            meals = day_data[meal_time]['meals']
+                            
+                            for meal_data in meals:
+                                if isinstance(meal_data, dict) and 'name' in meal_data and 'servings' in meal_data:
+                                    meal_name = meal_data['name']
                                     try:
-                                        quantity = float(ingredient['quantity']) * servings_ratio
-                                    except (ValueError, TypeError):
-                                        quantity = ingredient['quantity']
+                                        menu_servings = int(meal_data['servings'])
+                                    except ValueError:
+                                        menu_servings = 4
                                     
-                                    if name in shopping_list:
-                                        # Try to add quantities if they're numbers
+                                    if recipes_store.exists(meal_name):
+                                        recipe = recipes_store.get(meal_name)
+                                        
+                                        # Calculer le ratio en fonction du nombre de personnes
                                         try:
-                                            current_quantity = float(shopping_list[name]['quantity'])
-                                            if isinstance(quantity, float):
-                                                shopping_list[name]['quantity'] = str(current_quantity + quantity)
+                                            recipe_servings = int(recipe.get('servings', '4'))
+                                            servings_ratio = menu_servings / recipe_servings
+                                        except (ValueError, ZeroDivisionError):
+                                            servings_ratio = 1.0
+                                        
+                                        for ingredient in recipe.get('ingredients', []):
+                                            name = ingredient['name']
+                                            unit = ingredient['unit']
+                                            
+                                            # Ajuster la quantité en fonction du nombre de personnes
+                                            try:
+                                                quantity = float(ingredient['quantity']) * servings_ratio
+                                            except (ValueError, TypeError):
+                                                # Si la conversion échoue, utiliser la valeur d'origine
+                                                quantity = ingredient['quantity']
+                                            
+                                            # Ajouter ou mettre à jour l'ingrédient dans la liste de courses
+                                            if name in shopping_list:
+                                                # Récupérer les détails existants
+                                                existing = shopping_list[name]
+                                                existing_quantity = existing['quantity']
+                                                
+                                                # Essayer d'additionner les quantités si elles sont numériques
+                                                if isinstance(quantity, (int, float)):
+                                                    try:
+                                                        # Convertir la quantité existante en nombre si possible
+                                                        if isinstance(existing_quantity, str):
+                                                            existing_quantity = float(existing_quantity)
+                                                        
+                                                        # Additionner les quantités
+                                                        new_quantity = existing_quantity + quantity
+                                                        
+                                                        # Formater pour éviter trop de décimales
+                                                        if new_quantity == int(new_quantity):
+                                                            new_quantity = int(new_quantity)
+                                                        else:
+                                                            new_quantity = round(new_quantity, 2)
+                                                        
+                                                        # Mettre à jour la quantité
+                                                        shopping_list[name]['quantity'] = str(new_quantity)
+                                                    except (ValueError, TypeError):
+                                                        # Si la conversion échoue, garder la quantité existante
+                                                        pass
+                                            else:
+                                                # Formater la quantité si c'est un nombre
+                                                if isinstance(quantity, (int, float)):
+                                                    if quantity == int(quantity):
+                                                        quantity = int(quantity)
+                                                    else:
+                                                        quantity = round(quantity, 2)
+                                                    quantity = str(quantity)
+                                                
+                                                # Ajouter le nouvel ingrédient
+                                                shopping_list[name] = {
+                                                    'quantity': quantity,
+                                                    'unit': unit,
+                                                    'checked': False
+                                                }
+                        # Ancien format
+                        else:
+                            meals = []
+                            servings_ratio = 1.0
+                            
+                            if isinstance(day_data[meal_time], dict):
+                                meals = day_data[meal_time].get('meals', [])
+                                try:
+                                    menu_servings = int(day_data[meal_time].get('servings', '4'))
+                                except ValueError:
+                                    menu_servings = 4
+                            elif isinstance(day_data[meal_time], list):
+                                meals = day_data[meal_time]
+                                menu_servings = 4  # Valeur par défaut pour l'ancien format
+                            
+                            for meal in meals:
+                                if recipes_store.exists(meal):
+                                    recipe = recipes_store.get(meal)
+                                    
+                                    # Calculer le ratio en fonction du nombre de personnes
+                                    try:
+                                        recipe_servings = int(recipe.get('servings', '4'))
+                                        servings_ratio = menu_servings / recipe_servings
+                                    except (ValueError, ZeroDivisionError):
+                                        servings_ratio = 1.0
+                                    
+                                    for ingredient in recipe.get('ingredients', []):
+                                        name = ingredient['name']
+                                        unit = ingredient['unit']
+                                        
+                                        # Ajuster la quantité en fonction du nombre de personnes
+                                        try:
+                                            quantity = float(ingredient['quantity']) * servings_ratio
                                         except (ValueError, TypeError):
-                                            # If conversion fails, just keep the original
-                                            pass
-                                    else:
-                                        shopping_list[name] = {
-                                            'quantity': str(quantity) if isinstance(quantity, float) else quantity,
-                                            'unit': unit,
-                                            'checked': False
-                                        }
+                                            quantity = ingredient['quantity']
+                                        
+                                        if name in shopping_list:
+                                            # Try to add quantities if they're numbers
+                                            try:
+                                                current_quantity = float(shopping_list[name]['quantity'])
+                                                if isinstance(quantity, float):
+                                                    shopping_list[name]['quantity'] = str(current_quantity + quantity)
+                                            except (ValueError, TypeError):
+                                                # If conversion fails, just keep the original
+                                                pass
+                                        else:
+                                            shopping_list[name] = {
+                                                'quantity': str(quantity) if isinstance(quantity, float) else quantity,
+                                                'unit': unit,
+                                                'checked': False
+                                            }
         
         # Save the shopping list
         shopping_list_store.clear()  # Clear existing list
@@ -967,14 +1104,6 @@ class ChooseMealScreen(BaseScreen):
         
         self.header.add_widget(back_btn)
         self.header.add_widget(self.title_label)
-
-        servings_layout = BoxLayout(size_hint_y=None, height=50)
-        servings_layout.add_widget(Label(text='Nombre de personnes:', size_hint_x=None, width=150, color=AppColors.TEXT))
-        self.servings_input = TextInput(text='4', multiline=False, size_hint_x=None, width=50)
-        servings_layout.add_widget(self.servings_input)
-        
-        # Ajouter ce champ avant le bouton d'enregistrement
-        self.layout.add_widget(servings_layout)
         
         # Search input
         search_layout = BoxLayout(size_hint_y=None, height=50)
@@ -987,9 +1116,9 @@ class ChooseMealScreen(BaseScreen):
         self.recipe_list.bind(minimum_height=self.recipe_list.setter('height'))
         
         # Selected meals list
-        self.selected_meals_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=100)
+        self.selected_meals_layout = BoxLayout(orientation='vertical', size_hint_y=None, height=200)
         self.selected_meals_label = Label(text='Repas sélectionnés:', size_hint_y=None, height=30, color=AppColors.TEXT)
-        self.selected_meals = GridLayout(cols=1, spacing=5, size_hint_y=None, height=70)
+        self.selected_meals = GridLayout(cols=1, spacing=5, size_hint_y=None, height=170)
         self.selected_meals.bind(minimum_height=self.selected_meals.setter('height'))
         
         self.selected_meals_layout.add_widget(self.selected_meals_label)
@@ -1022,7 +1151,8 @@ class ChooseMealScreen(BaseScreen):
         
         self.add_widget(self.layout)
         
-        self.selected_meal_list = []
+        # Nouvelle structure pour stocker les repas sélectionnés avec leur nombre de personnes
+        self.selected_meal_list = []  # Liste de dictionnaires {name: nom_recette, servings: nb_personnes}
     
     def on_pre_enter(self):
         self.title_label.text = f'Choisir un repas pour {self.day} ({self.get_meal_time_name()})'
@@ -1057,27 +1187,103 @@ class ChooseMealScreen(BaseScreen):
         if menu_store.exists(self.day):
             day_data = menu_store.get(self.day)
             if self.meal_time in day_data:
-                if isinstance(day_data[self.meal_time], dict):
-                    self.selected_meal_list = day_data[self.meal_time].get('meals', [])
-                    self.servings_input.text = day_data[self.meal_time].get('servings', '4')
+                if isinstance(day_data[self.meal_time], dict) and 'meals' in day_data[self.meal_time]:
+                    # Nouveau format avec liste de dictionnaires
+                    if isinstance(day_data[self.meal_time]['meals'], list) and all(isinstance(m, dict) for m in day_data[self.meal_time]['meals']):
+                        for meal_dict in day_data[self.meal_time]['meals']:
+                            self.selected_meal_list.append({
+                                'name': meal_dict['name'],
+                                'servings': meal_dict['servings']
+                            })
+                            self.add_meal_to_selected_list(meal_dict['name'], meal_dict['servings'])
+                    # Ancien format avec liste de noms et un seul nombre de personnes
+                    else:
+                        meals = day_data[self.meal_time].get('meals', [])
+                        servings = day_data[self.meal_time].get('servings', '4')
+                        for meal_name in meals:
+                            self.selected_meal_list.append({
+                                'name': meal_name,
+                                'servings': servings
+                            })
+                            self.add_meal_to_selected_list(meal_name, servings)
+                # Format très ancien (liste simple)
                 elif isinstance(day_data[self.meal_time], list):
-                    self.selected_meal_list = day_data[self.meal_time]
-        
-        for meal in self.selected_meal_list:
-            self.add_meal_to_selected_list(meal)
+                    for meal_name in day_data[self.meal_time]:
+                        self.selected_meal_list.append({
+                            'name': meal_name,
+                            'servings': '4'
+                        })
+                        self.add_meal_to_selected_list(meal_name)
     
-    def add_meal_to_selected_list(self, meal_name):
-        meal_layout = BoxLayout(size_hint_y=None, height=30)
-        meal_label = Label(text=meal_name, color=AppColors.TEXT)
+    def add_meal_to_selected_list(self, meal_name, servings='4'):
+        # Créer un layout pour la recette et son nombre de personnes
+        meal_layout = BoxLayout(size_hint_y=None, height=40, spacing=5)
+        
+        # Label pour le nom de la recette
+        meal_label = Label(text=meal_name, color=AppColors.TEXT, size_hint_x=0.6)
+        
+        # Layout pour le nombre de personnes
+        servings_layout = BoxLayout(size_hint_x=0.3)
+        servings_label = Label(text="Pers:", size_hint_x=None, width=40, color=AppColors.TEXT)
+        servings_input = TextInput(text=servings, multiline=False, size_hint_x=None, width=40)
+        
+        # Associer l'input au dictionnaire de la recette pour pouvoir récupérer la valeur plus tard
+        for meal_dict in self.selected_meal_list:
+            if meal_dict['name'] == meal_name:
+                meal_dict['input'] = servings_input
+                break
+        
+        servings_layout.add_widget(servings_label)
+        servings_layout.add_widget(servings_input)
+        
+        # Bouton de suppression
         remove_btn = Button(text='X', size_hint_x=None, width=30, 
                            background_color=AppColors.SECONDARY)
         remove_btn.bind(on_press=lambda btn, name=meal_name: self.remove_meal(name))
         
         meal_layout.add_widget(meal_label)
+        meal_layout.add_widget(servings_layout)
         meal_layout.add_widget(remove_btn)
         
         self.selected_meals.add_widget(meal_layout)
-        self.selected_meals.height = len(self.selected_meal_list) * 30
+        self.selected_meals.height = len(self.selected_meal_list) * 40
+    
+    def select_recipe(self, recipe_name):
+        # Vérifier si la recette est déjà dans la liste
+        for meal in self.selected_meal_list:
+            if meal['name'] == recipe_name:
+                return  # Ne pas ajouter de doublons
+        
+        # Ajouter la recette à la liste avec un nombre de personnes par défaut
+        meal_dict = {'name': recipe_name, 'servings': '4'}
+        self.selected_meal_list.append(meal_dict)
+        
+        # Ajouter la recette à l'interface
+        self.add_meal_to_selected_list(recipe_name)
+    
+    def remove_meal(self, meal_name):
+        for i, meal_dict in enumerate(self.selected_meal_list):
+            if meal_dict['name'] == meal_name:
+                self.selected_meal_list.pop(i)
+                break
+        self.load_selected_meals()  # Refresh the list
+    
+    def add_custom_meal(self, instance):
+        meal = self.custom_input.text.strip()
+        
+        # Vérifier si la recette est déjà dans la liste
+        for meal_dict in self.selected_meal_list:
+            if meal_dict['name'] == meal:
+                return  # Ne pas ajouter de doublons
+        
+        if meal:
+            # Ajouter la recette à la liste avec un nombre de personnes par défaut
+            meal_dict = {'name': meal, 'servings': '4'}
+            self.selected_meal_list.append(meal_dict)
+            
+            # Ajouter la recette à l'interface
+            self.add_meal_to_selected_list(meal)
+            self.custom_input.text = ''
     
     def filter_recipes(self, instance, value):
         self.recipe_list.clear_widgets()
@@ -1100,37 +1306,30 @@ class ChooseMealScreen(BaseScreen):
         if not found:
             self.recipe_list.add_widget(Label(text='Aucune recette trouvée', size_hint_y=None, height=40, color=AppColors.TEXT))
     
-    def select_recipe(self, recipe_name):
-        if recipe_name not in self.selected_meal_list:
-            self.selected_meal_list.append(recipe_name)
-            self.add_meal_to_selected_list(recipe_name)
-    
-    def remove_meal(self, meal_name):
-        if meal_name in self.selected_meal_list:
-            self.selected_meal_list.remove(meal_name)
-            self.load_selected_meals()  # Refresh the list
-    
-    def add_custom_meal(self, instance):
-        meal = self.custom_input.text.strip()
-        if meal and meal not in self.selected_meal_list:
-            self.selected_meal_list.append(meal)
-            self.add_meal_to_selected_list(meal)
-            self.custom_input.text = ''
-    
     def save_meals(self, instance):
         day_data = {}
         if menu_store.exists(self.day):
             day_data = menu_store.get(self.day)
         
-        # Récupérer le nombre de personnes
-        servings = self.servings_input.text.strip()
-        if not servings.isdigit():
-            servings = "4"  # Valeur par défaut
+        # Mettre à jour le nombre de personnes pour chaque recette à partir des inputs
+        for meal_dict in self.selected_meal_list:
+            if 'input' in meal_dict:
+                servings = meal_dict['input'].text.strip()
+                if not servings.isdigit():
+                    servings = "4"  # Valeur par défaut
+                meal_dict['servings'] = servings
         
-        # Stocker les repas avec le nombre de personnes
+        # Supprimer les références aux widgets pour éviter des problèmes de sérialisation
+        meals_to_save = []
+        for meal_dict in self.selected_meal_list:
+            meals_to_save.append({
+                'name': meal_dict['name'],
+                'servings': meal_dict['servings']
+            })
+        
+        # Stocker les repas avec leur nombre de personnes individuel
         meal_data = {
-            'meals': self.selected_meal_list,
-            'servings': servings
+            'meals': meals_to_save
         }
         
         day_data[self.meal_time] = meal_data
@@ -1278,3 +1477,4 @@ class RecipeApp(App):
 
 if __name__ == '__main__':
     RecipeApp().run()
+
